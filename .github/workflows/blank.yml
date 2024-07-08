@@ -1,0 +1,314 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>San Francisco Firefighter Game</title>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #2C3E50;
+            font-family: Arial, sans-serif;
+        }
+        #gameCanvas {
+            border: 2px solid #331800;
+            background-image: url('https://via.placeholder.com/800x600.png?text=San+Francisco+Skyline');
+            background-size: cover;
+        }
+        #startButton, #restartButton {
+            padding: 10px;
+            font-size: 16px;
+            cursor: pointer;
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            border-radius: 5px;
+        }
+        #startButton {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+        }
+        #score {
+            position: absolute;
+            top: 10px;
+            right: 10px;
+            font-size: 20px;
+            color: white;
+            background-color: rgba(0, 0, 0, 0.5);
+            padding: 5px 10px;
+            border-radius: 5px;
+        }
+        #endScreen {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 20px;
+            border-radius: 10px;
+            text-align: center;
+            display: none;
+        }
+        #endScreen h2 {
+            margin-top: 0;
+        }
+        #finalScore {
+            font-size: 24px;
+            margin-bottom: 20px;
+        }
+    </style>
+</head>
+<body>
+    <canvas id="gameCanvas" width="800" height="600"></canvas>
+    <button id="startButton">Start Game</button>
+    <div id="score">Score: 0</div>
+    <div id="endScreen">
+        <h2>You failed to save the great city of San Francisco!</h2>
+        <div id="finalScore"></div>
+        <button id="restartButton">Restart?</button>
+    </div>
+
+    <script>
+        const canvas = document.getElementById('gameCanvas');
+        const ctx = canvas.getContext('2d');
+        const startButton = document.getElementById('startButton');
+        const restartButton = document.getElementById('restartButton');
+        const scoreElement = document.getElementById('score');
+        const endScreen = document.getElementById('endScreen');
+        const finalScoreElement = document.getElementById('finalScore');
+
+        let fireEngine = { x: 400, y: 500, width: 60, height: 40 };
+        let houses = [];
+        let water = null;
+        let score = 0;
+        let gameRunning = false;
+        let fireInterval;
+        let currentInterval = 2000;
+
+        function drawFireEngine() {
+            ctx.fillStyle = '#FF0000';
+            ctx.fillRect(fireEngine.x, fireEngine.y, fireEngine.width, fireEngine.height);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillRect(fireEngine.x + 5, fireEngine.y + 5, 25, 20);
+            ctx.fillStyle = '#000000';
+            ctx.beginPath();
+            ctx.arc(fireEngine.x + 15, fireEngine.y + 35, 5, 0, Math.PI * 2);
+            ctx.arc(fireEngine.x + 45, fireEngine.y + 35, 5, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.fillStyle = '#FFFFFF';
+            ctx.font = 'bold 16px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('39', fireEngine.x + fireEngine.width / 2 + 10, fireEngine.y + fireEngine.height - 10);
+        }
+
+        function drawHouses() {
+            houses.forEach(house => {
+                ctx.fillStyle = house.onFire ? '#8B4513' : '#FFD700';
+                ctx.fillRect(house.x, house.y, house.width, house.height);
+                ctx.beginPath();
+                ctx.moveTo(house.x, house.y);
+                ctx.lineTo(house.x + house.width / 2, house.y - 20);
+                ctx.lineTo(house.x + house.width, house.y);
+                ctx.closePath();
+                ctx.fillStyle = '#A52A2A';
+                ctx.fill();
+                ctx.fillStyle = '#87CEEB';
+                ctx.fillRect(house.x + 10, house.y + 15, 15, 15);
+                ctx.fillRect(house.x + house.width - 25, house.y + 15, 15, 15);
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(house.x + house.width / 2 - 10, house.y + 30, 20, 30);
+                if (house.onFire) {
+                    drawFire(house.x + house.width / 2, house.y);
+                }
+            });
+        }
+
+        function drawFire(x, y) {
+            const gradient = ctx.createRadialGradient(x, y, 0, x, y, 30);
+            gradient.addColorStop(0, 'rgba(255, 255, 0, 0.8)');
+            gradient.addColorStop(0.5, 'rgba(255, 120, 0, 0.6)');
+            gradient.addColorStop(1, 'rgba(255, 0, 0, 0.4)');
+            ctx.beginPath();
+            ctx.moveTo(x, y);
+            ctx.lineTo(x - 15, y - 30);
+            ctx.lineTo(x + 15, y - 30);
+            ctx.closePath();
+            ctx.fillStyle = gradient;
+            ctx.fill();
+        }
+
+        function drawWater() {
+            if (water) {
+                ctx.beginPath();
+                ctx.moveTo(fireEngine.x + fireEngine.width / 2, fireEngine.y);
+                ctx.quadraticCurveTo(
+                    (fireEngine.x + water.x) / 2,
+                    fireEngine.y - 50,
+                    water.x,
+                    water.y
+                );
+                ctx.lineWidth = 5;
+                ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)';
+                ctx.stroke();
+                for (let i = 0; i < 10; i++) {
+                    const t = i / 10;
+                    const x = (1-t)*(1-t)*fireEngine.x + 2*(1-t)*t*((fireEngine.x + water.x)/2) + t*t*water.x;
+                    const y = (1-t)*(1-t)*fireEngine.y + 2*(1-t)*t*(fireEngine.y - 50) + t*t*water.y;
+                    ctx.beginPath();
+                    ctx.arc(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 10, 1, 0, Math.PI * 2);
+                    ctx.fillStyle = 'rgba(0, 191, 255, 0.8)';
+                    ctx.fill();
+                }
+            }
+        }
+
+        function createHouses() {
+            const houseWidth = 60;
+            const houseHeight = 80;
+            const gap = 20;
+            const totalWidth = 5 * (houseWidth + gap) - gap;
+            let startX = (canvas.width - totalWidth) / 2;
+            for (let i = 0; i < 5; i++) {
+                houses.push({
+                    x: startX + i * (houseWidth + gap),
+                    y: 100,
+                    width: houseWidth,
+                    height: houseHeight,
+                    onFire: false
+                });
+            }
+        }
+
+        function setRandomHouseOnFire() {
+            const notBurningHouses = houses.filter(house => !house.onFire);
+            if (notBurningHouses.length > 0) {
+                const randomHouse = notBurningHouses[Math.floor(Math.random() * notBurningHouses.length)];
+                randomHouse.onFire = true;
+            }
+            if (houses.every(house => house.onFire)) {
+                endGame();
+            } else {
+                increaseDifficulty();
+            }
+        }
+
+        function increaseDifficulty() {
+            if (currentInterval > 200) {
+                currentInterval *= 0.9;
+                clearInterval(fireInterval);
+                fireInterval = setInterval(setRandomHouseOnFire, currentInterval);
+            }
+        }
+
+        function updateGame() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            drawHouses();
+            drawFireEngine();
+            drawWater();
+            if (water) {
+                houses.forEach(house => {
+                    if (house.onFire && 
+                        water.x > house.x && water.x < house.x + house.width &&
+                        water.y > house.y - 20 && water.y < house.y + house.height) {
+                        house.onFire = false;
+                        score += 10;
+                        scoreElement.textContent = `Score: ${score}`;
+                    }
+                });
+            }
+            if (gameRunning) {
+                requestAnimationFrame(updateGame);
+            }
+        }
+
+        function endGame() {
+            gameRunning = false;
+            clearInterval(fireInterval);
+            finalScoreElement.textContent = `Final Score: ${score}`;
+            endScreen.style.display = 'block';
+        }
+
+        function startGame() {
+            gameRunning = true;
+            score = 0;
+            scoreElement.textContent = `Score: 0`;
+            endScreen.style.display = 'none';
+            houses = [];
+            createHouses();
+            currentInterval = 2000;
+            fireInterval = setInterval(setRandomHouseOnFire, currentInterval);
+            updateGame();
+        }
+
+        function getCanvasPosition(event) {
+            const rect = canvas.getBoundingClientRect();
+            const x = (event.clientX || event.touches[0].clientX) - rect.left;
+            const y = (event.clientY || event.touches[0].clientY) - rect.top;
+            return { x, y };
+        }
+
+        function handleStart(e) {
+            e.preventDefault();
+            if (gameRunning) {
+                water = getCanvasPosition(e);
+            }
+        }
+
+        function handleMove(e) {
+            e.preventDefault();
+            if (gameRunning && water) {
+                const pos = getCanvasPosition(e);
+                water.x = pos.x;
+                water.y = pos.y;
+            }
+        }
+
+        function handleEnd(e) {
+            e.preventDefault();
+            water = null;
+        }
+
+        canvas.addEventListener('mousedown', handleStart);
+        canvas.addEventListener('touchstart', handleStart);
+        canvas.addEventListener('mousemove', handleMove);
+        canvas.addEventListener('touchmove', handleMove);
+        canvas.addEventListener('mouseup', handleEnd);
+        canvas.addEventListener('touchend', handleEnd);
+
+        startButton.addEventListener('click', startGame);
+        startButton.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            startGame();
+        });
+
+        restartButton.addEventListener('click', startGame);
+        restartButton.addEventListener('touchend', function(e) {
+            e.preventDefault();
+            startGame();
+        });
+
+        document.addEventListener('keydown', (e) => {
+            if (gameRunning) {
+                switch (e.key) {
+                    case 'ArrowLeft':
+                        fireEngine.x = Math.max(0, fireEngine.x - 15);
+                        break;
+                    case 'ArrowRight':
+                        fireEngine.x = Math.min(canvas.width - fireEngine.width, fireEngine.x + 15);
+                        break;
+                }
+            }
+        });
+
+        document.addEventListener('touchmove', function(e) {
+            e.preventDefault();
+        }, { passive: false });
+    </script>
+</body>
+</html>
