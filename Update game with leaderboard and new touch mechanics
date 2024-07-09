@@ -62,6 +62,15 @@
             font-size: 24px;
             margin-bottom: 20px;
         }
+        #leaderboard {
+            margin-top: 20px;
+        }
+        #leaderboard h3 {
+            margin-bottom: 10px;
+        }
+        #leaderboard ol {
+            text-align: left;
+        }
     </style>
 </head>
 <body>
@@ -72,6 +81,10 @@
         <h2>You failed to save the great city of San Francisco!</h2>
         <div id="finalScore"></div>
         <button id="restartButton">Restart?</button>
+        <div id="leaderboard">
+            <h3>Top 5 Scores</h3>
+            <ol id="leaderboardList"></ol>
+        </div>
     </div>
 
     <script>
@@ -82,10 +95,10 @@
         const scoreElement = document.getElementById('score');
         const endScreen = document.getElementById('endScreen');
         const finalScoreElement = document.getElementById('finalScore');
+        const leaderboardList = document.getElementById('leaderboardList');
 
         let fireEngine = { x: 400, y: 500, width: 60, height: 40 };
         let houses = [];
-        let water = null;
         let score = 0;
         let gameRunning = false;
         let fireInterval;
@@ -143,29 +156,13 @@
             ctx.fill();
         }
 
-        function drawWater() {
-            if (water) {
-                ctx.beginPath();
-                ctx.moveTo(fireEngine.x + fireEngine.width / 2, fireEngine.y);
-                ctx.quadraticCurveTo(
-                    (fireEngine.x + water.x) / 2,
-                    fireEngine.y - 50,
-                    water.x,
-                    water.y
-                );
-                ctx.lineWidth = 5;
-                ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)';
-                ctx.stroke();
-                for (let i = 0; i < 10; i++) {
-                    const t = i / 10;
-                    const x = (1-t)*(1-t)*fireEngine.x + 2*(1-t)*t*((fireEngine.x + water.x)/2) + t*t*water.x;
-                    const y = (1-t)*(1-t)*fireEngine.y + 2*(1-t)*t*(fireEngine.y - 50) + t*t*water.y;
-                    ctx.beginPath();
-                    ctx.arc(x + (Math.random() - 0.5) * 10, y + (Math.random() - 0.5) * 10, 1, 0, Math.PI * 2);
-                    ctx.fillStyle = 'rgba(0, 191, 255, 0.8)';
-                    ctx.fill();
-                }
-            }
+        function drawWater(startX, startY, endX, endY) {
+            ctx.beginPath();
+            ctx.moveTo(startX, startY);
+            ctx.lineTo(endX, endY);
+            ctx.lineWidth = 5;
+            ctx.strokeStyle = 'rgba(0, 191, 255, 0.7)';
+            ctx.stroke();
         }
 
         function createHouses() {
@@ -210,18 +207,6 @@
             ctx.clearRect(0, 0, canvas.width, canvas.height);
             drawHouses();
             drawFireEngine();
-            drawWater();
-            if (water) {
-                houses.forEach(house => {
-                    if (house.onFire && 
-                        water.x > house.x && water.x < house.x + house.width &&
-                        water.y > house.y - 20 && water.y < house.y + house.height) {
-                        house.onFire = false;
-                        score += 10;
-                        scoreElement.textContent = `Score: ${score}`;
-                    }
-                });
-            }
             if (gameRunning) {
                 requestAnimationFrame(updateGame);
             }
@@ -231,6 +216,8 @@
             gameRunning = false;
             clearInterval(fireInterval);
             finalScoreElement.textContent = `Final Score: ${score}`;
+            updateLeaderboard(score);
+            displayLeaderboard();
             endScreen.style.display = 'block';
         }
 
@@ -253,33 +240,38 @@
             return { x, y };
         }
 
-        function handleStart(e) {
-            e.preventDefault();
-            if (gameRunning) {
-                water = getCanvasPosition(e);
+        function handleTap(e) {
+            if (!gameRunning) return;
+            
+            const pos = getCanvasPosition(e);
+            const tappedHouse = houses.find(house => 
+                pos.x > house.x && pos.x < house.x + house.width &&
+                pos.y > house.y && pos.y < house.y + house.height
+            );
+
+            if (tappedHouse && tappedHouse.onFire) {
+                tappedHouse.onFire = false;
+                score += 10;
+                scoreElement.textContent = `Score: ${score}`;
+                drawWater(fireEngine.x + fireEngine.width / 2, fireEngine.y, tappedHouse.x + tappedHouse.width / 2, tappedHouse.y + tappedHouse.height / 2);
             }
         }
 
-        function handleMove(e) {
-            e.preventDefault();
-            if (gameRunning && water) {
-                const pos = getCanvasPosition(e);
-                water.x = pos.x;
-                water.y = pos.y;
-            }
+        function updateLeaderboard(newScore) {
+            let scores = JSON.parse(localStorage.getItem('leaderboard')) || [];
+            scores.push(newScore);
+            scores.sort((a, b) => b - a);
+            scores = scores.slice(0, 5);
+            localStorage.setItem('leaderboard', JSON.stringify(scores));
         }
 
-        function handleEnd(e) {
-            e.preventDefault();
-            water = null;
+        function displayLeaderboard() {
+            const scores = JSON.parse(localStorage.getItem('leaderboard')) || [];
+            leaderboardList.innerHTML = scores.map(score => `<li>${score}</li>`).join('');
         }
 
-        canvas.addEventListener('mousedown', handleStart);
-        canvas.addEventListener('touchstart', handleStart);
-        canvas.addEventListener('mousemove', handleMove);
-        canvas.addEventListener('touchmove', handleMove);
-        canvas.addEventListener('mouseup', handleEnd);
-        canvas.addEventListener('touchend', handleEnd);
+        canvas.addEventListener('mousedown', handleTap);
+        canvas.addEventListener('touchstart', handleTap);
 
         startButton.addEventListener('click', startGame);
         startButton.addEventListener('touchend', function(e) {
